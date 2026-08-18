@@ -5,9 +5,13 @@
  */
 defined('INDEX_AUTH') or die('Direct access not allowed!');
 
-use WaNotif\WaConfig;
+// Muat kelas config secara mandiri — konteks template OPAC
+// di sebagian server tidak memuat berkas utama plugin
+if (!class_exists('WaNotif\WaConfig')) {
+    require_once __DIR__ . '/WaConfig.php';
+}
 
-$_waConfig = WaConfig::load();
+$_waConfig = WaNotif\WaConfig::load();
 if (empty($_waConfig['enable']) || empty($_waConfig['enable_webchat'])) return;
 
 $_waLibName = htmlspecialchars($_waConfig['library_name'] ?? 'Perpustakaan');

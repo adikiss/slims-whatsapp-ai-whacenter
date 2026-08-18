@@ -1,9 +1,22 @@
 <?php
 
+defined('INDEX_AUTH') or die('Direct access not allowed!');
+
+// Muat kelas plugin secara mandiri — jalur routing OPAC di
+// sebagian server tidak memuat berkas utama plugin
+foreach (['WaConfig', 'Whacenter', 'Message', 'AiClient'] as $waClass) {
+    if (!class_exists('WaNotif\\' . $waClass)) {
+        require_once __DIR__ . '/' . $waClass . '.php';
+    }
+}
+if (!function_exists('wa_notif_write_log')) {
+    function wa_notif_write_log(string $type, string $memberId, string $memberName, string $phone, string $message, string $status, string $response = '')
+    {
+    }
+}
+
 use WaNotif\{WaConfig, AiClient, Message};
 use SLiMS\DB;
-
-defined('INDEX_AUTH') or die('Direct access not allowed!');
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');

@@ -281,8 +281,8 @@ class Message
         $systemPrompt = "Anda adalah asisten AI di website {$libName}. ";
         $systemPrompt .= "Bantu pengunjung dengan pertanyaan seputar perpustakaan, koleksi, dan layanan. ";
         $systemPrompt .= "Jawab dalam Bahasa Indonesia, singkat dan ramah. ";
-        $systemPrompt .= "Format jawaban HTML sederhana: <b>teks</b> untuk bold, <i>teks</i> untuk italic, <br> untuk baris baru. ";
-        $systemPrompt .= "Jangan gunakan tag lain selain b, i, br, ul, li. ";
+        $systemPrompt .= "PENTING: JANGAN gunakan tag HTML (seperti <b>, <i>, <br>) sama sekali. ";
+        $systemPrompt .= "Format teks dengan gaya WhatsApp: *teks* untuk bold, _teks_ untuk italic, dan baris baru biasa untuk ganti baris. ";
         $systemPrompt .= "Jika ada daftar koleksi pada konteks, gunakan untuk merekomendasikan buku yang relevan. ";
 
         // Konteks: hasil pencarian katalog berdasarkan pesan user
@@ -303,7 +303,30 @@ class Message
             return "Maaf, terjadi kendala pada layanan AI. Silakan coba lagi atau gunakan perintah *CARI* <judul buku>.";
         }
 
-        return $result['message'];
+        return self::sanitizeForChat($result['message']);
+    }
+
+    /**
+     * Safety net: jika AI tetap mengeluarkan tag HTML, konversi ke format teks
+     * agar tidak tampil sebagai tag mentah di widget (yang men-escape HTML).
+     */
+    private static function sanitizeForChat(string $text): string
+    {
+        // <br> dan penutup blok → baris baru
+        $text = preg_replace('/<br\s*\/?>/i', "\n", $text);
+        $text = preg_replace('/<\/(p|div|ul|ol|pre)>/i', "\n", $text);
+        // <li> → bullet
+        $text = preg_replace('/<li[^>]*>/i', '• ', $text);
+        // *bold* HTML → penanda WhatsApp
+        $text = preg_replace('/<(b|strong)[^>]*>(.*?)<\/\1>/is', '*$2*', $text);
+        $text = preg_replace('/<(i|em)[^>]*>(.*?)<\/\1>/is', '_$2_', $text);
+        // buang sisa tag HTML apapun
+        $text = preg_replace('/<[^>]+>/', '', $text);
+        // HTML entity dasar
+        $text = str_replace(['&nbsp;', '&amp;', '&lt;', '&gt;', '&quot;'], [' ', '&', '<', '>', '"'], $text);
+        // rapikan baris kosong berlebih
+        $text = preg_replace("/\n{3,}/", "\n\n", $text);
+        return trim($text);
     }
 
     private static function searchBiblioForContext($dbs, string $keyword, int $limit = 8): string

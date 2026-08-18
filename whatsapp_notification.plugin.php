@@ -56,6 +56,7 @@ $plugins->registerMenu('system', __('WhatsApp Notification'), __DIR__ . '/index.
 $plugins->registerMenu('system', __('WA Notification Log'), __DIR__ . '/log.php');
 $plugins->registerMenu('circulation', __('Notifikasi Terlambat WA'), __DIR__ . '/overdued.php');
 $plugins->registerMenu('opac', 'wa_webhook', __DIR__ . '/webhook.php');
+$plugins->registerMenu('opac', 'wa_webchat', __DIR__ . '/webchat.php');
 
 $plugins->register(Plugins::CIRCULATION_AFTER_SUCCESSFUL_TRANSACTION, function (array $data) {
     $config = WaNotif\WaConfig::load();

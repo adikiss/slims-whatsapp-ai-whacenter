@@ -39,6 +39,7 @@ if (isset($_POST['action'])) {
                 'notify_overdue' => isset($_POST['notify_overdue']),
                 'notify_new_member' => isset($_POST['notify_new_member']),
                 'enable_chatbot' => isset($_POST['enable_chatbot']),
+                'enable_webchat' => isset($_POST['enable_webchat']),
                 'enable_ai' => isset($_POST['enable_ai']),
                 'ai_api_key' => trim($_POST['ai_api_key'] ?? ''),
                 'ai_model' => trim($_POST['ai_model'] ?? ''),
@@ -163,7 +164,8 @@ $selfUrl = htmlspecialchars($_SERVER['PHP_SELF'] . '?' . http_build_query($_GET)
       <tr>
         <td class="alterCell"><strong>Chatbot WhatsApp</strong><br><small>Anggota dapat mencari bibliografi, cek pinjaman &amp; denda dengan mengirim pesan ke nomor perpustakaan. Contoh: <code>CARI Laskar Pelangi</code></small></td>
         <td class="alterCell2">
-          <label><input type="checkbox" name="enable_chatbot" <?= $checked($config['enable_chatbot']) ?>> Aktifkan chatbot
+          <label class="d-block"><input type="checkbox" name="enable_chatbot" <?= $checked($config['enable_chatbot']) ?>> Aktifkan chatbot WhatsApp</label>
+          <label class="d-block"><input type="checkbox" name="enable_webchat" <?= $checked($config['enable_webchat']) ?>> Aktifkan Web Chat AI di OPAC (tombol chat di website)</label>
       </tr>
       <tr>
         <td class="alterCell"><strong>AI Assistant</strong><small>Gunakan AI (OpenRouter) untuk menjawab pertanyaan umum di luar perintah chatbot. Pesan yang tidak dikenali akan dijawab oleh AI.</small></td>

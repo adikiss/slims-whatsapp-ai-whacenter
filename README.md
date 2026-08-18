@@ -71,3 +71,29 @@ MIT License
 ## Credits
 
 Dibuat untuk komunitas perpustakaan Indonesia.
+
+## Web Chat AI (OPAC)
+
+Plugin ini juga menyediakan widget **Web Chat AI** yang muncul di website OPAC (tombol hijau di pojok kanan bawah):
+
+- Pengunjung bisa bertanya bebas — dijawab AI (butuh API Key OpenRouter)
+- Perintah `CARI <judul>` — langsung cari di katalog database
+- Quick reply buttons untuk pertanyaan umum
+- Deteksi member yang sedang login OPAC
+
+### Aktivasi
+1. Centang **Aktifkan Web Chat AI di OPAC** di System > WhatsApp Notification
+2. Aktifkan **AI Assistant** dan isi API Key OpenRouter
+
+### Integrasi ke Template
+Tambahkan 3 baris ini di `template/<tema>/parts/footer.php` (sebelum `</body>`):
+
+```php
+<?php
+// WhatsApp Notification plugin : Web Chat AI widget
+$_wa_widget = SB . 'plugins/whatsapp_notification/webchat_widget.php';
+if (file_exists($_wa_widget)) include $_wa_widget;
+?>
+```
+
+Endpoint chat: `index.php?p=wa_webchat` (POST JSON `{"message": "..."}`)

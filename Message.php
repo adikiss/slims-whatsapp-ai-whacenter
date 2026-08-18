@@ -260,6 +260,89 @@ class Message
             $result['message'] . self::footer($config);
     }
 
+    public static function webchatReply($dbs, array $config, string $text, ?array $member = null): string
+    {
+        $text = trim($text);
+        $parts = preg_split('/\s+/', $text, 2);
+        $command = strtoupper($parts[0] ?? '');
+        $argument = trim($parts[1] ?? '');
+
+        // Perintah CARI tetap pakai pencarian database (tanpa AI)
+        if ($argument !== '' && in_array($command, ['CARI', 'CARIBUKU', 'SEARCH', 'FIND'])) {
+            return self::searchBiblio($dbs, $config, $argument);
+        }
+
+        $ai = AiClient::fromConfig();
+        if (is_null($ai) || empty($config['enable_ai'])) {
+            return "Layanan AI belum diaktifkan.\nGunakan perintah *CARI* <judul buku> untuk mencari koleksi.\nContoh: CARI Laskar Pelangi";
+        }
+
+        $libName = $config['library_name'] ?? 'Perpustakaan';
+        $systemPrompt = "Anda adalah asisten AI di website {$libName}. ";
+        $systemPrompt .= "Bantu pengunjung dengan pertanyaan seputar perpustakaan, koleksi, dan layanan. ";
+        $systemPrompt .= "Jawab dalam Bahasa Indonesia, singkat dan ramah. ";
+        $systemPrompt .= "Format jawaban HTML sederhana: <b>teks</b> untuk bold, <i>teks</i> untuk italic, <br> untuk baris baru. ";
+        $systemPrompt .= "Jangan gunakan tag lain selain b, i, br, ul, li. ";
+        $systemPrompt .= "Jika ada daftar koleksi pada konteks, gunakan untuk merekomendasikan buku yang relevan. ";
+
+        // Konteks: hasil pencarian katalog berdasarkan pesan user
+        $context = [];
+        $catalogContext = self::searchBiblioForContext($dbs, $text);
+        if ($catalogContext !== '') {
+            $context['hasil_pencarian_katalog'] = $catalogContext;
+            $context['catatan'] = 'Gunakan daftar di atas jika relevan dengan pertanyaan pengguna.';
+        }
+        if ($member) {
+            $context['nama_pengunjung'] = $member['member_name'];
+            $context['jenis_anggota'] = $member['member_type_name'] ?? '-';
+        }
+
+        $result = $ai->chat($systemPrompt, $text, $context);
+
+        if (!$result['ok']) {
+            return "Maaf, terjadi kendala pada layanan AI. Silakan coba lagi atau gunakan perintah *CARI* <judul buku>.";
+        }
+
+        return $result['message'];
+    }
+
+    private static function searchBiblioForContext($dbs, string $keyword, int $limit = 8): string
+    {
+        $keyword = trim($keyword);
+        if (mb_strlen($keyword) < 3) return '';
+
+        $clean = preg_replace('/^(cari|caribuku|search|find|buku|tentang|apa|yang|bagaimana|kapan|dimana|di mana|tolong|saya|mau|ingin|perlu)\s+/i', '', $keyword);
+        $clean = trim($clean ?? $keyword);
+        if (mb_strlen($clean) < 3) $clean = $keyword;
+
+        $escaped = $dbs->escape_string(str_replace(['%', '_'], ['\\%', '\\_'], $clean));
+        $q = $dbs->query("SELECT b.title, b.publish_year,
+                (SELECT GROUP_CONCAT(ma.author_name SEPARATOR ', ') FROM biblio_author ba
+                    LEFT JOIN mst_author ma ON ma.author_id = ba.author_id
+                    WHERE ba.biblio_id = b.biblio_id) AS authors,
+                (SELECT COUNT(i.item_code) FROM item i WHERE i.biblio_id = b.biblio_id) AS total_copy,
+                (SELECT COUNT(l.loan_id) FROM loan l INNER JOIN item i ON i.item_code = l.item_code
+                    WHERE i.biblio_id = b.biblio_id AND l.is_lent = 1 AND l.is_return = 0) AS on_loan
+            FROM biblio b
+            WHERE b.title LIKE '%{$escaped}%'
+            ORDER BY b.last_update DESC
+            LIMIT {$limit}");
+
+        if (!$q || $q->num_rows < 1) return '';
+
+        $lines = [];
+        $no = 1;
+        while ($row = $q->fetch_assoc()) {
+            $available = max(0, (int)$row['total_copy'] - (int)$row['on_loan']);
+            $line = $no++ . '. ' . $row['title'];
+            if (!empty($row['authors'])) $line .= ' — ' . $row['authors'];
+            if (!empty($row['publish_year'])) $line .= ' (' . $row['publish_year'] . ')';
+            $line .= ' [' . $available . '/' . $row['total_copy'] . ' tersedia]';
+            $lines[] = $line;
+        }
+        return implode("\n", $lines);
+    }
+
     private static function notRegistered(array $config): string
     {
         return self::header($config, '⚠️ BELUM TERDAFTAR') .

@@ -107,12 +107,16 @@ if (!empty($_SESSION['m_name'])) {
   function formatWhatsApp(text) {
     // *bold* -> <b>, _italic_ -> <i>, newline -> <br>, URL -> link klik-able
     var t = escapeHtml(text);
-    // Linkify duluan di teks murni (belum ada tag <b>/<i>),
-    // agar '</b>' tidak ikut terdeteksi sebagai URL
-    t = t.replace(/((?:https?:\/\/|\.?\/)[^\s<]+|index\.php\?[^\s<]+)/g, function(url) {
+    // Linkify HANYA URL lengkap http(s):// — bukan kata dengan slash biasa (mis. KTP/SIM).
+    // Linkify duluan di teks murni (belum ada tag <b>/<i>) agar '</b>' tak terdeteksi sebagai URL.
+    t = t.replace(/https?:\/\/[^\s<]+/g, function(url) {
+      // buang tanda baca di akhir URL (mis. ")." setelah link)
+      var m = url.match(/.*[^\s<().,!?:;']/);
+      var tail = m ? url.slice(m[0].length) : '';
+      url = m ? m[0] : url;
       var isDetail = url.indexOf('show_detail') !== -1;
       var label = isDetail ? 'Lihat Detail' : url;
-      return '<a href="' + url + '" target="_blank" rel="noopener" style="color:#0b7a3e;font-weight:600;text-decoration:underline;">' + label + ' 🔗</a>';
+      return '<a href="' + url + '" target="_blank" rel="noopener" style="color:#0b7a3e;font-weight:600;text-decoration:underline;">' + label + ' 🔗</a>' + tail;
     });
     // baru format bold/italic setelah URL diamankan
     t = t.replace(/\*([^*\n]+)\*/g, '<b>$1</b>');

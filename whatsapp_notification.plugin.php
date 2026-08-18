@@ -58,6 +58,32 @@ $plugins->registerMenu('circulation', __('Notifikasi Terlambat WA'), __DIR__ . '
 $plugins->registerMenu('opac', 'wa_webhook', __DIR__ . '/webhook.php');
 $plugins->registerMenu('opac', 'wa_webchat', __DIR__ . '/webchat.php');
 
+// Auto-inject widget Web Chat AI ke semua halaman OPAC — tanpa perlu edit template.
+// Widget dirender sebagai string murni (tanpa output buffering) karena
+// ob_start() tidak boleh dipanggil di dalam callback output buffer.
+if (!defined('WA_NOTIF_WEBCHAT_INJECTOR')) {
+    define('WA_NOTIF_WEBCHAT_INJECTOR', 1);
+    $waScriptName = $_SERVER['SCRIPT_NAME'] ?? '';
+    if (strpos($waScriptName, '/admin/') === false && php_sapi_name() !== 'cli') {
+        ob_start(function ($html) {
+            if (is_string($html)
+                && stripos($html, '</body>') !== false
+                && stripos($html, 'id="wa-webchat"') === false) {
+                $waWidgetFile = __DIR__ . '/webchat_widget.php';
+                if (is_readable($waWidgetFile)) {
+                    define('WA_NOTIF_RENDER_SILENT', 1);
+                    require_once $waWidgetFile;
+                    $waWidgetHtml = wa_notif_webchat_widget_html();
+                    if ($waWidgetHtml !== '') {
+                        $html = preg_replace('/<\/body>/i', $waWidgetHtml . '</body>', $html, 1);
+                    }
+                }
+            }
+            return $html;
+        });
+    }
+}
+
 $plugins->register(Plugins::CIRCULATION_AFTER_SUCCESSFUL_TRANSACTION, function (array $data) {
     $config = WaNotif\WaConfig::load();
     if (empty($config['enable'])) return;

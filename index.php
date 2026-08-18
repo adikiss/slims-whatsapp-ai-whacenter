@@ -11,6 +11,8 @@ $canRead = utility::havePrivilege('system', 'r') || utility::havePrivilege('syst
 if (!$canRead) die('<div class="alert alert-danger">' . __('You don\'t have enough privileges to access this area!') . '</div>');
 
 $config = WaConfig::load();
+// Normalisasi: pastikan semua key tersedia (config.json lama mungkin belum memuat key baru)
+$config = array_merge(WaConfig::defaults(), $config);
 $alert = null;
 $alertType = 'success';
 

@@ -267,9 +267,17 @@ class Message
         $command = strtoupper($parts[0] ?? '');
         $argument = trim($parts[1] ?? '');
 
-        // Perintah CARI tetap pakai pencarian database (tanpa AI)
+        // Perintah CARI tetap pakai pencarian database (tanpa AI) — dengan link detail utk web
         if ($argument !== '' && in_array($command, ['CARI', 'CARIBUKU', 'SEARCH', 'FIND'])) {
-            return self::searchBiblio($dbs, $config, $argument);
+            return self::searchBiblio($dbs, $config, $argument, true);
+        }
+
+        // Perintah cepat untuk member yang login
+        if ($member && in_array($command, ['PINJAM', 'PINJAMAN', 'LOAN'])) {
+            return self::memberLoans($dbs, $config, $member);
+        }
+        if ($member && in_array($command, ['DENDA', 'FINES'])) {
+            return self::memberFines($dbs, $config, $member);
         }
 
         $ai = AiClient::fromConfig();
@@ -293,8 +301,45 @@ class Message
             $context['catatan'] = 'Gunakan daftar di atas jika relevan dengan pertanyaan pengguna.';
         }
         if ($member) {
-            $context['nama_pengunjung'] = $member['member_name'];
+            $context['pengunjung_adalah_anggota_yang_sudah_login'] = 'ya';
+            $context['nama_anggota'] = $member['member_name'];
+            $context['id_anggota'] = $member['member_id'];
             $context['jenis_anggota'] = $member['member_type_name'] ?? '-';
+            $context['terdaftar'] = $member['register_date'] ?? '-';
+            $context['berlaku_sampai'] = $member['expire_date'] ?? '-';
+
+            // Pinjaman aktif
+            $mid = $dbs->escape_string($member['member_id']);
+            $qLoan = $dbs->query("SELECT l.item_code, l.due_date, b.title,
+                    (TO_DAYS(DATE(NOW())) - TO_DAYS(l.due_date)) AS overdue_days
+                FROM loan l
+                LEFT JOIN item i ON i.item_code = l.item_code
+                LEFT JOIN biblio b ON b.biblio_id = i.biblio_id
+                WHERE l.member_id = '{$mid}' AND l.is_lent = 1 AND l.is_return = 0
+                ORDER BY l.due_date ASC LIMIT 15");
+            $loans = [];
+            $fineEachDay = (float)($member['fine_each_day'] ?? 0);
+            while ($qLoan && $row = $qLoan->fetch_assoc()) {
+                $line = '- ' . ($row['title'] ?? $row['item_code']) . ' (jatuh tempo ' . $row['due_date'];
+                if ((int)$row['overdue_days'] > 0) {
+                    $line .= ', TERLAMBAT ' . $row['overdue_days'] . ' hari';
+                    if ($fineEachDay > 0) $line .= ', denda ' . self::fmtMoney((int)$row['overdue_days'] * $fineEachDay);
+                }
+                $line .= ')';
+                $loans[] = $line;
+            }
+            if ($loans) {
+                $context['koleksi_yang_sedang_dipinjam'] = implode("\n", $loans);
+            } else {
+                $context['koleksi_yang_sedang_dipinjam'] = '(tidak ada pinjaman aktif)';
+            }
+
+            // Denda
+            $qFine = $dbs->query("SELECT SUM(debet - credit) AS balance FROM fines WHERE member_id = '{$mid}'");
+            if ($qFine && $row = $qFine->fetch_assoc()) {
+                $balance = (float)($row['balance'] ?? 0);
+                $context['denda_belum_dibayar'] = $balance > 0 ? self::fmtMoney($balance) : 'Rp 0 (tidak ada denda)';
+            }
         }
 
         $result = $ai->chat($systemPrompt, $text, $context);
@@ -388,7 +433,7 @@ class Message
         return null;
     }
 
-    private static function searchBiblio($dbs, array $config, string $keyword): string
+    private static function searchBiblio($dbs, array $config, string $keyword, bool $web = false): string
     {
         $keyword = trim($keyword);
         if ($keyword === '') {
@@ -426,6 +471,9 @@ class Message
             if (!empty($row['authors'])) $text .= '   Pengarang : ' . $row['authors'] . "\n";
             if (!empty($row['publish_year'])) $text .= '   Tahun : ' . $row['publish_year'] . "\n";
             $text .= '   Status : ' . $status . "\n";
+            if ($web) {
+                $text .= '   🔗 ' . SWB . 'index.php?p=show_detail&id=' . $row['biblio_id'] . "\n";
+            }
         }
         $text .= "\nPinjam melalui pustakawan atau kunjungi perpustakaan.\n";
         return $text . self::footer($config);

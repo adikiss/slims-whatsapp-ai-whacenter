@@ -33,10 +33,13 @@ try {
     $dbs = DB::getInstance('mysqli');
 
     // Deteksi member yang sedang login OPAC (jika ada)
+    // SLiMS OPAC menyimpan session: mid, m_name, m_email
     $member = null;
-    if (!empty($_SESSION['member_id'])) {
-        $mid = $dbs->escape_string($_SESSION['member_id']);
-        $q = $dbs->query("SELECT m.member_id, m.member_name, mt.member_type_name FROM member m
+    if (utility::isMemberLogin() && !empty($_SESSION['mid'])) {
+        $mid = $dbs->escape_string($_SESSION['mid']);
+        $q = $dbs->query("SELECT m.member_id, m.member_name, m.member_email, mt.member_type_name, mt.fine_each_day,
+                m.register_date, m.expire_date
+            FROM member m
             LEFT JOIN mst_member_type mt ON mt.member_type_id = m.member_type_id
             WHERE m.member_id='$mid' LIMIT 1");
         if ($q && $q->num_rows > 0) $member = $q->fetch_assoc();
@@ -44,7 +47,7 @@ try {
 
     $reply = Message::webchatReply($dbs, $config, $message, $member);
 
-    wa_notif_write_log('webchat', $member['member_id'] ?? '', $member['member_name'] ?? '', '-', $message . "\n---\n" . $reply, 'success', '');
+    wa_notif_write_log('webchat', $member['member_id'] ?? 'guest', $member['member_name'] ?? 'Tamu', '-', $message . "\n---\n" . $reply, 'success', '');
 
     echo json_encode(['status' => true, 'reply' => $reply]);
 } catch (\Throwable $e) {

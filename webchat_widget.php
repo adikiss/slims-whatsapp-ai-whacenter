@@ -12,6 +12,13 @@ if (empty($_waConfig['enable']) || empty($_waConfig['enable_webchat'])) return;
 
 $_waLibName = htmlspecialchars($_waConfig['library_name'] ?? 'Perpustakaan');
 $_waChatUrl = SWB . 'index.php?p=wa_webchat';
+$_waMemberName = '';
+if (function_exists('utility') === false) {
+    // utility tersedia via sysconfig; widget di-include dalam konteks OPAC yang sudah memuatnya
+}
+if (!empty($_SESSION['m_name'])) {
+    $_waMemberName = htmlspecialchars($_SESSION['m_name']);
+}
 ?>
 <!-- WA Notif: Web Chat AI Widget -->
 <div id="wa-webchat" style="font-family:inherit;">
@@ -25,13 +32,23 @@ $_waChatUrl = SWB . 'index.php?p=wa_webchat';
       <button id="wa-webchat-close" title="Tutup" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1;padding:2px 6px;">&times;</button>
     </div>
     <div id="wa-webchat-msgs" style="flex:1;overflow-y:auto;padding:14px;background:#f5f6f7;font-size:13px;">
-      <div style="text-align:center;color:#8a8f94;font-size:11px;margin-bottom:10px;">Tanyakan apa saja seputar perpustakaan</div>
+      <div style="text-align:center;color:#8a8f94;font-size:11px;margin-bottom:10px;">
+        <?php if ($_waMemberName !== ''): ?>
+          Halo, <b><?=$_waMemberName?></b> 👋 — saya tahu kamu sedang login
+        <?php else: ?>
+          Tanyakan apa saja seputar perpustakaan
+        <?php endif; ?>
+      </div>
     </div>
     <div style="padding:10px;border-top:1px solid #e4e6e8;background:#fff;">
       <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
         <button class="wa-webchat-quick" style="border:1px solid #d1d5db;background:#fff;border-radius:14px;padding:4px 10px;font-size:11px;cursor:pointer;">CARI Laskar Pelangi</button>
-        <button class="wa-webchat-quick" style="border:1px solid #d1d5db;background:#fff;border-radius:14px;padding:4px 10px;font-size:11px;cursor:pointer;">Jam buka perpustakaan?</button>
+        <?php if ($_waMemberName !== ''): ?>
+        <button class="wa-webchat-quick" style="border:1px solid #d1d5db;background:#fff;border-radius:14px;padding:4px 10px;font-size:11px;cursor:pointer;">PINJAM</button>
+        <button class="wa-webchat-quick" style="border:1px solid #d1d5db;background:#fff;border-radius:14px;padding:4px 10px;font-size:11px;cursor:pointer;">DENDA</button>
+        <?php else: ?>
         <button class="wa-webchat-quick" style="border:1px solid #d1d5db;background:#fff;border-radius:14px;padding:4px 10px;font-size:11px;cursor:pointer;">Bagaimana cara jadi anggota?</button>
+        <?php endif; ?>
       </div>
       <div style="display:flex;gap:8px;">
         <input type="text" id="wa-webchat-input" placeholder="Ketik pesan..." autocomplete="off"
@@ -88,10 +105,15 @@ $_waChatUrl = SWB . 'index.php?p=wa_webchat';
   }
 
   function formatWhatsApp(text) {
-    // *bold* -> <b>, _italic_ -> <i>, newline -> <br>
+    // *bold* -> <b>, _italic_ -> <i>, newline -> <br>, URL -> link klik-able
     var t = escapeHtml(text);
     t = t.replace(/\*([^*\n]+)\*/g, '<b>$1</b>');
     t = t.replace(/(^|\s)_([^_\n]+)_/g, '$1<i>$2</i>');
+    t = t.replace(/((?:https?:\/\/|\.?\/)[^\s<]+|index\.php\?[^\s<]+)/g, function(url) {
+      var isDetail = url.indexOf('show_detail') !== -1;
+      var label = isDetail ? 'Lihat Detail' : url;
+      return '<a href="' + url + '" target="_blank" rel="noopener" style="color:#0b7a3e;font-weight:600;text-decoration:underline;">' + label + ' 🔗</a>';
+    });
     t = t.replace(/\n/g, '<br>');
     return t;
   }
@@ -133,7 +155,11 @@ $_waChatUrl = SWB . 'index.php?p=wa_webchat';
       setTimeout(function() { toggle.style.transform = ''; input.focus(); }, 150);
       if (!msgs.dataset.greeted) {
         msgs.dataset.greeted = '1';
+        <?php if ($_waMemberName !== ''): ?>
+        addMsg('Halo <b><?=$_waMemberName?></b>! 👋 Saya asisten AI <?=$_waLibName?>.<br>Saya sudah tahu kamu sedang login — tanyakan pinjaman, denda, atau koleksi. Ketik <b>PINJAM</b> / <b>DENDA</b> / <b>CARI &lt;judul&gt;</b>.', 'bot');
+        <?php else: ?>
         addMsg('Halo! 👋 Saya asisten AI <?=$_waLibName?>.<br>Tanyakan apa saja seputar koleksi & layanan perpustakaan, atau ketik <b>CARI &lt;judul buku&gt;</b>.', 'bot');
+        <?php endif; ?>
       }
     }
   });

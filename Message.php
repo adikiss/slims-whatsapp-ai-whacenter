@@ -21,6 +21,27 @@ class Message
         return 'Rp ' . number_format((float)$value, 0, ',', '.');
     }
 
+    /**
+     * Bangun URL absolut dari path relatif, berdasarkan host request saat ini.
+     * SWB bisa relatif ('./' atau '/') jika baseurl kosong di database,
+     * jadi host diambil dari $_SERVER agar link selalu klik-able di webchat.
+     */
+    public static function absoluteUrl(string $path): string
+    {
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (int)($_SERVER['SERVER_PORT'] ?? 80) === 443 ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $self = str_replace('\\', '/', $_SERVER['PHP_SELF'] ?? '/');
+        if (preg_match('#/admin/#', $self)) {
+            // dipanggil dari konteks admin → naik ke root SLiMS
+            $base = preg_replace('#/admin/.*$#', '/', $self);
+        } else {
+            // konteks OPAC → dirname dari /index.php = '/'
+            $base = rtrim(dirname($self), '/') . '/';
+        }
+        if (strpos($path, 'http') === 0) return $path;
+        return $scheme . '://' . $host . $base . ltrim($path, '/');
+    }
+
     public static function footer(array $config): string
     {
         $text = trim($config['footer_text'] ?? '');
@@ -472,7 +493,7 @@ class Message
             if (!empty($row['publish_year'])) $text .= '   Tahun : ' . $row['publish_year'] . "\n";
             $text .= '   Status : ' . $status . "\n";
             if ($web) {
-                $text .= '   🔗 ' . SWB . 'index.php?p=show_detail&id=' . $row['biblio_id'] . "\n";
+                $text .= '   ' . self::absoluteUrl('index.php?p=show_detail&id=' . $row['biblio_id']) . "\n";
             }
         }
         $text .= "\nPinjam melalui pustakawan atau kunjungi perpustakaan.\n";

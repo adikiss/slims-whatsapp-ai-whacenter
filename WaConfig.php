@@ -28,6 +28,8 @@ class WaConfig
             'library_name' => '',
             'footer_text' => 'Harap simpan pesan ini sebagai bukti transaksi.',
             'webhook_url' => '',
+            'mcp_enable' => false,
+            'mcp_token' => '',
         ];
     }
 
@@ -40,6 +42,11 @@ class WaConfig
         }
         if (empty($config['library_name'])) {
             $config['library_name'] = $GLOBALS['sysconf']['library_name'] ?? 'Perpustakaan';
+        }
+        // Token MCP dibuat otomatis sekali agar plugin langsung siap pakai
+        if (empty($config['mcp_token'])) {
+            $config['mcp_token'] = bin2hex(random_bytes(16));
+            if (self::isPluginDirWritable()) self::save($config);
         }
         return $config;
     }

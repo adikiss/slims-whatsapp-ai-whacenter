@@ -9,6 +9,8 @@ Plugin notifikasi WhatsApp untuk SLiMS 9 (Bulian) dengan integrasi AI melalui Wh
 - **Notifikasi Anggota Baru** — Kirim pesan selamat datang saat anggota baru terdaftar
 - **Chatbot WhatsApp** — Anggota dapat mencari buku, cek pinjaman, dan denda via WhatsApp
 - **AI Assistant** — Integrasi AI (OpenRouter) untuk menjawab pertanyaan umum di luar perintah chatbot
+- **Web Chat AI** — Widget chat AI di OPAC (auto-inject, tanpa edit template)
+- **MCP Server** — Agent AI (Claude Code, Codex, opencode) bisa membaca data perpustakaan
 - **Log Lengkap** — Log semua pesan terkirim dengan filter dan pencarian
 - **Dashboard Widget** — Statistik notifikasi di beranda admin SLiMS
 
@@ -97,3 +99,81 @@ if (file_exists($_wa_widget)) include $_wa_widget;
 ```
 
 Endpoint chat: `index.php?p=wa_webchat` (POST JSON `{"message": "..."}`)
+
+## MCP Server (untuk Claude Code / Codex / opencode)
+
+Plugin ini menyertakan **MCP Server** (Model Context Protocol, transport Streamable HTTP) sehingga agent AI bisa membaca data perpustakaan secara langsung: katalog, anggota, peminjaman, keterlambatan, dan denda. Semua tool **read-only** dan diamankan dengan token.
+
+### Aktivasi
+1. Buka **System > WhatsApp Notification**
+2. Centang **Aktifkan MCP Server** lalu **Save Settings** (token dibuat otomatis)
+3. Salin **URL Endpoint** dan **Token** yang ditampilkan
+
+### Tools yang tersedia
+
+| Tool | Deskripsi |
+|------|-----------|
+| `search_catalog` | Cari koleksi + ketersediaan eksemplar |
+| `get_member` | Profil anggota, status, pinjaman aktif, denda |
+| `get_loans` | Daftar pinjaman anggota (aktif/terlambat/kembali) |
+| `get_overdue` | Semua keterlambatan + kontak WA anggota |
+| `get_fines` | Riwayat & total denda belum bayar |
+| `get_stats` | Statistik ringkas perpustakaan |
+
+### Koneksi Claude Code
+
+```bash
+claude mcp add --transport http slims <URL_ENDPOINT> --header "Authorization: Bearer <TOKEN>"
+```
+
+atau di `.mcp.json` proyek:
+
+```json
+{
+  "mcpServers": {
+    "slims": {
+      "type": "http",
+      "url": "https://perpustakaan.example.com/index.php?p=wa_mcp",
+      "headers": { "Authorization": "Bearer <TOKEN>" }
+    }
+  }
+}
+```
+
+### Koneksi opencode
+
+Di `opencode.json`:
+
+```json
+{
+  "mcp": {
+    "slims": {
+      "type": "remote",
+      "url": "https://perpustakaan.example.com/index.php?p=wa_mcp",
+      "headers": { "Authorization": "Bearer <TOKEN>" },
+      "enabled": true
+    }
+  }
+}
+```
+
+### Koneksi Codex CLI
+
+Di `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.slims]
+url = "https://perpustakaan.example.com/index.php?p=wa_mcp"
+bearer_token_env_var = "SLIMS_MCP_TOKEN"   # export SLIMS_MCP_TOKEN=<TOKEN>
+```
+
+### Contoh pemakaian
+
+Setelah terhubung, cukup tanya agent-nya:
+
+- *"Cari buku laskar pelangi, masih ada yang bisa dipinjam?"*
+- *"Anggota 1002 pinjam apa saja? Ada yang telat?"*
+- *"Siapa saja anggota yang paling terlambat?"*
+- *"Berapa total denda yang belum dibayar bulan ini?"*
+
+Catatan: server harus dapat diakses dari tempat agent berjalan (publik/HTTPS untuk agent berbasis cloud; localhost cukup untuk agent lokal).

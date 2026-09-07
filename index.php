@@ -23,6 +23,7 @@ $waRootPath = preg_replace('#/admin/.*$#', '/', $_SERVER['PHP_SELF'] ?? '/');
 $waBaseUrl = $waScheme . '://' . $waHost . $waRootPath;
 
 $defaultWebhookUrl = (str_starts_with(SWB, 'http') ? SWB : $waBaseUrl) . 'index.php?p=wa_webhook';
+$defaultMcpUrl = (str_starts_with(SWB, 'http') ? SWB : $waBaseUrl) . 'index.php?p=wa_mcp';
 
 if (isset($_POST['action'])) {
     $action = $_POST['action'];
@@ -49,7 +50,12 @@ if (isset($_POST['action'])) {
                 'library_name' => trim($_POST['library_name'] ?? ''),
                 'footer_text' => trim($_POST['footer_text'] ?? ''),
                 'webhook_url' => trim($_POST['webhook_url'] ?? ''),
+                'mcp_enable' => isset($_POST['mcp_enable']),
+                'mcp_token' => trim($_POST['mcp_token'] ?? ''),
             ]);
+            if ($config['mcp_enable'] && $config['mcp_token'] === '') {
+                $config['mcp_token'] = bin2hex(random_bytes(16));
+            }
             $saved = WaConfig::save($config);
             $alert = $saved ? 'Pengaturan berhasil disimpan.' : 'Gagal menyimpan pengaturan.';
             $alertType = $saved ? 'success' : 'danger';
@@ -200,6 +206,25 @@ $selfUrl = htmlspecialchars($_SERVER['PHP_SELF'] . '?' . http_build_query($_GET)
         <td class="alterCell2"><input type="text" name="library_name" value="<?= htmlspecialchars($config['library_name']) ?>" class="form-control" style="width:100%"></td>
       </tr>
       <tr>
+        <td class="alterCell"><strong>MCP Server</strong><br><small>Izinkan agent AI (Claude Code, Codex, opencode) membaca data perpustakaan: katalog, anggota, peminjaman, keterlambatan, denda. Semua aksi <em>read-only</em>, diamankan dengan token.</small></td>
+        <td class="alterCell2">
+          <label class="d-block"><input type="checkbox" name="mcp_enable" <?= $checked((bool)($config['mcp_enable'] ?? false)) ?>> Aktifkan MCP Server</label>
+          <div class="mt-2">
+            <label>Token Autentikasi <small>(kirim sebagai header <code>Authorization: Bearer &lt;token&gt;</code>)</small></label>
+            <div class="input-group">
+              <input type="text" name="mcp_token" id="waMcpToken" value="<?= htmlspecialchars($config['mcp_token'] ?? '') ?>" class="form-control" style="width:100%">
+              <div class="input-group-append">
+                <button type="button" class="btn btn-secondary" onclick="regenMcpToken()">Buat Token Baru</button>
+              </div>
+            </div>
+          </div>
+          <div class="mt-2">
+            <label>URL Endpoint <small>(gunakan bersama token di konfigurasi agent)</small></label>
+            <input type="text" readonly onclick="this.select()" class="form-control" style="width:100%;background:#f4f6f8" value="<?= htmlspecialchars($defaultMcpUrl) ?>">
+          </div>
+        </td>
+      </tr>
+      <tr>
         <td class="alterCell"><strong>Teks Footer</strong></td>
         <td class="alterCell2"><textarea name="footer_text" rows="2" class="form-control" style="width:100%"><?= htmlspecialchars($config['footer_text']) ?></textarea></td>
       </tr>
@@ -237,5 +262,10 @@ function doAction(action) {
 }
 function fillDefault() {
   document.querySelector('input[name="webhook_url"]').value = '<?= addslashes($defaultWebhookUrl) ?>';
+}
+function regenMcpToken() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  document.getElementById('waMcpToken').value = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 </script>

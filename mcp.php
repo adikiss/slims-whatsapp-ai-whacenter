@@ -57,14 +57,20 @@ if (empty($config['mcp_enable'])) {
 }
 
 // Auth: Bearer token / X-MCP-Token / ?token=
-$provided = '';
+// Semua kredensial yang dikirim klien dikumpulkan; salah satu yang cocok sudah cukup.
+// Tanpa ini, header Authorization lain (mis. token OAuth bawaan klien) menutupi token di URL.
+$provided = [];
 $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
-if (preg_match('/^Bearer\s+(.+)$/i', trim($authHeader), $m)) $provided = trim($m[1]);
-if ($provided === '' && !empty($_SERVER['HTTP_X_MCP_TOKEN'])) $provided = trim($_SERVER['HTTP_X_MCP_TOKEN']);
-if ($provided === '' && !empty($_GET['token'])) $provided = trim((string)$_GET['token']);
+if (preg_match('/^Bearer\s+(.+)$/i', trim($authHeader), $m)) $provided[] = trim($m[1]);
+if (!empty($_SERVER['HTTP_X_MCP_TOKEN'])) $provided[] = trim($_SERVER['HTTP_X_MCP_TOKEN']);
+if (!empty($_GET['token'])) $provided[] = trim((string)$_GET['token']);
 
 $token = (string)($config['mcp_token'] ?? '');
-if ($token === '' || $provided === '' || !hash_equals($token, $provided)) {
+$authorized = false;
+foreach ($provided as $candidate) {
+    if ($candidate !== '' && hash_equals($token, $candidate)) { $authorized = true; break; }
+}
+if ($token === '' || !$authorized) {
     header('WWW-Authenticate: Bearer realm="slims-mcp"');
     wa_mcp_json(401, ['jsonrpc' => '2.0', 'error' => ['code' => -32001, 'message' => 'Unauthorized: token tidak valid atau kosong.'], 'id' => null]);
 }
@@ -299,13 +305,16 @@ function wa_mcp_tool_get_stats(mysqli $dbs, array $args): array
 function wa_mcp_tool_definitions(): array
 {
     $str = fn(string $desc) => ['type' => 'string', 'description' => $desc];
+    // Semua tool hanya membaca data (SELECT). Penanda ini membuat klien seperti ChatGPT
+    // tidak memperlakukan setiap pemanggilan sebagai aksi tulis yang perlu dikonfirmasi.
+    $readonly = ['readOnlyHint' => true];
     return [
-        ['name' => 'search_catalog', 'description' => 'Cari bibliografi/koleksi perpustakaan berdasarkan judul, penulis, atau sinopsis. Menampilkan ketersediaan eksemplar.', 'inputSchema' => ['type' => 'object', 'properties' => ['query' => $str('Kata kunci pencarian'), 'limit' => ['type' => 'integer', 'description' => 'Maksimal hasil (1-25)', 'default' => 10]], 'required' => ['query']]],
-        ['name' => 'get_member', 'description' => 'Lihat data lengkap satu anggota: profil, status keanggotaan, pinjaman aktif, keterlambatan, dan total denda.', 'inputSchema' => ['type' => 'object', 'properties' => ['member_id' => $str('ID anggota, contoh: 1002')], 'required' => ['member_id']]],
-        ['name' => 'get_loans', 'description' => 'Daftar pinjaman satu anggota beserta jatuh tempo dan status keterlambatan.', 'inputSchema' => ['type' => 'object', 'properties' => ['member_id' => $str('ID anggota'), 'status' => ['type' => 'string', 'enum' => ['active', 'overdue', 'returned', 'all'], 'default' => 'active']], 'required' => ['member_id']]],
-        ['name' => 'get_overdue', 'description' => 'Semua pinjaman terlambat di seluruh perpustakaan, diurutkan dari yang terlama, lengkap dengan kontak WA anggota.', 'inputSchema' => ['type' => 'object', 'properties' => ['limit' => ['type' => 'integer', 'description' => 'Maksimal hasil (1-50)', 'default' => 25]]]],
-        ['name' => 'get_fines', 'description' => 'Riwayat denda satu anggota beserta total yang belum dibayar.', 'inputSchema' => ['type' => 'object', 'properties' => ['member_id' => $str('ID anggota')], 'required' => ['member_id']]],
-        ['name' => 'get_stats', 'description' => 'Statistik ringkas perpustakaan: anggota, koleksi, pinjaman aktif, keterlambatan, dan denda.', 'inputSchema' => ['type' => 'object', 'properties' => []]],
+        ['name' => 'search_catalog', 'description' => 'Cari bibliografi/koleksi perpustakaan berdasarkan judul, penulis, atau sinopsis. Menampilkan ketersediaan eksemplar.', 'annotations' => $readonly, 'inputSchema' => ['type' => 'object', 'properties' => ['query' => $str('Kata kunci pencarian'), 'limit' => ['type' => 'integer', 'description' => 'Maksimal hasil (1-25)', 'default' => 10]], 'required' => ['query']]],
+        ['name' => 'get_member', 'description' => 'Lihat data lengkap satu anggota: profil, status keanggotaan, pinjaman aktif, keterlambatan, dan total denda.', 'annotations' => $readonly, 'inputSchema' => ['type' => 'object', 'properties' => ['member_id' => $str('ID anggota, contoh: 1002')], 'required' => ['member_id']]],
+        ['name' => 'get_loans', 'description' => 'Daftar pinjaman satu anggota beserta jatuh tempo dan status keterlambatan.', 'annotations' => $readonly, 'inputSchema' => ['type' => 'object', 'properties' => ['member_id' => $str('ID anggota'), 'status' => ['type' => 'string', 'enum' => ['active', 'overdue', 'returned', 'all'], 'default' => 'active']], 'required' => ['member_id']]],
+        ['name' => 'get_overdue', 'description' => 'Semua pinjaman terlambat di seluruh perpustakaan, diurutkan dari yang terlama, lengkap dengan kontak WA anggota.', 'annotations' => $readonly, 'inputSchema' => ['type' => 'object', 'properties' => ['limit' => ['type' => 'integer', 'description' => 'Maksimal hasil (1-50)', 'default' => 25]]]],
+        ['name' => 'get_fines', 'description' => 'Riwayat denda satu anggota beserta total yang belum dibayar.', 'annotations' => $readonly, 'inputSchema' => ['type' => 'object', 'properties' => ['member_id' => $str('ID anggota')], 'required' => ['member_id']]],
+        ['name' => 'get_stats', 'description' => 'Statistik ringkas perpustakaan: anggota, koleksi, pinjaman aktif, keterlambatan, dan denda.', 'annotations' => $readonly, 'inputSchema' => ['type' => 'object']],
     ];
 }
 
@@ -367,7 +376,7 @@ foreach ($messages as $msg) {
             break;
 
         case 'ping':
-            $responses[] = ['jsonrpc' => '2.0', 'id' => $id, 'result' => []];
+            $responses[] = ['jsonrpc' => '2.0', 'id' => $id, 'result' => new stdClass()];
             break;
 
         case 'tools/list':

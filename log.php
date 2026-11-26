@@ -57,6 +57,7 @@ function typeBadge(string $type): string {
     $map = [
         'transaction' => ['label' => 'Transaksi', 'class' => 'primary'],
         'overdue' => ['label' => 'Terlambat', 'class' => 'warning'],
+        'overdue_email' => ['label' => 'Terlambat (Email)', 'class' => 'warning'],
         'new_member' => ['label' => 'Anggota Baru', 'class' => 'success'],
         'chatbot' => ['label' => 'Chatbot', 'class' => 'info'],
         'test' => ['label' => 'Tes', 'class' => 'secondary'],
@@ -86,6 +87,7 @@ function statusBadge(string $status): string {
             <option value="">Semua Tipe</option>
             <option value="transaction" <?= $typeFilter === 'transaction' ? 'selected' : '' ?>>Transaksi</option>
             <option value="overdue" <?= $typeFilter === 'overdue' ? 'selected' : '' ?>>Terlambat</option>
+            <option value="overdue_email" <?= $typeFilter === 'overdue_email' ? 'selected' : '' ?>>Terlambat (Email)</option>
             <option value="new_member" <?= $typeFilter === 'new_member' ? 'selected' : '' ?>>Anggota Baru</option>
             <option value="chatbot" <?= $typeFilter === 'chatbot' ? 'selected' : '' ?>>Chatbot</option>
             <option value="test" <?= $typeFilter === 'test' ? 'selected' : '' ?>>Tes</option>

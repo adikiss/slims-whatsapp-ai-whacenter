@@ -30,6 +30,14 @@ class WaConfig
             'webhook_url' => '',
             'mcp_enable' => false,
             'mcp_token' => '',
+            // Notifikasi terjadwal (cron.php)
+            'cron_enable' => false,
+            'cron_token' => '',
+            'cron_channel_wa' => true,
+            'cron_channel_email' => false,
+            'cron_min_days' => 1,
+            'cron_repeat_days' => 7,
+            'cron_max_per_run' => 50,
         ];
     }
 

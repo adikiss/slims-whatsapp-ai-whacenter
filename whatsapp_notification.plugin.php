@@ -58,6 +58,7 @@ $plugins->registerMenu('circulation', __('Notifikasi Terlambat WA'), __DIR__ . '
 $plugins->registerMenu('opac', 'wa_webhook', __DIR__ . '/webhook.php');
 $plugins->registerMenu('opac', 'wa_webchat', __DIR__ . '/webchat.php');
 $plugins->registerMenu('opac', 'wa_mcp', __DIR__ . '/mcp.php');
+$plugins->registerMenu('opac', 'wa_cron', __DIR__ . '/cron.php');
 
 // Auto-inject widget Web Chat AI ke semua halaman OPAC — tanpa perlu edit template.
 // Widget dirender sebagai string murni (tanpa output buffering) karena

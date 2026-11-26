@@ -52,9 +52,20 @@ if (isset($_POST['action'])) {
                 'webhook_url' => trim($_POST['webhook_url'] ?? ''),
                 'mcp_enable' => isset($_POST['mcp_enable']),
                 'mcp_token' => trim($_POST['mcp_token'] ?? ''),
+                'cron_enable' => isset($_POST['cron_enable']),
+                'cron_token' => trim($_POST['cron_token'] ?? ''),
+                'cron_channel_wa' => isset($_POST['cron_channel_wa']),
+                'cron_channel_email' => isset($_POST['cron_channel_email']),
+                'cron_min_days' => max(1, (int)($_POST['cron_min_days'] ?? 1)),
+                'cron_repeat_days' => max(1, (int)($_POST['cron_repeat_days'] ?? 7)),
+                'cron_max_per_run' => max(1, (int)($_POST['cron_max_per_run'] ?? 50)),
             ]);
             if ($config['mcp_enable'] && $config['mcp_token'] === '') {
                 $config['mcp_token'] = bin2hex(random_bytes(16));
+            }
+            // Token cron dibuat sekarang agar URL cron sudah bisa diuji (tanpa mengirim) sebelum fitur diaktifkan
+            if ($config['cron_token'] === '') {
+                $config['cron_token'] = bin2hex(random_bytes(16));
             }
             $saved = WaConfig::save($config);
             $alert = $saved ? 'Pengaturan berhasil disimpan.' : 'Gagal menyimpan pengaturan.';
@@ -130,6 +141,9 @@ if (isset($_POST['action'])) {
         }
     }
 }
+
+// Dihitung setelah penyimpanan, agar token cron yang baru dibuat langsung muncul di URL
+$defaultCronUrl = (str_starts_with(SWB, 'http') ? SWB : $waBaseUrl) . 'index.php?p=wa_cron&token=' . rawurlencode((string)($config['cron_token'] ?? ''));
 
 $checked = fn(bool $value) => $value ? 'checked' : '';
 $selfUrl = htmlspecialchars($_SERVER['PHP_SELF'] . '?' . http_build_query($_GET));
@@ -225,6 +239,43 @@ $selfUrl = htmlspecialchars($_SERVER['PHP_SELF'] . '?' . http_build_query($_GET)
         </td>
       </tr>
       <tr>
+        <td class="alterCell"><strong>Notifikasi Terlambat Otomatis</strong><br><small>URL cron di bawah ini dipanggil oleh cron hosting (misalnya Cron Jobs di cPanel) sesuai jadwal yang diinginkan. Anggota yang sudah dinotifikasi tidak dihubungi lagi sebelum jeda pengiriman ulang terlewat. Hasilnya tercatat di WA Notification Log.</small></td>
+        <td class="alterCell2">
+          <label class="d-block"><input type="checkbox" name="cron_enable" <?= $checked((bool)($config['cron_enable'] ?? false)) ?>> Aktifkan pengiriman terjadwal</label>
+          <div class="mt-2">
+            <label class="mr-3"><input type="checkbox" name="cron_channel_wa" <?= $checked((bool)($config['cron_channel_wa'])) ?>> WhatsApp</label>
+            <label><input type="checkbox" name="cron_channel_email" <?= $checked((bool)($config['cron_channel_email'])) ?>> Email (memakai pengaturan email SLiMS)</label>
+          </div>
+          <div class="form-row align-items-center mt-2">
+            <label class="col-auto col-form-label">Kirim mulai terlambat</label>
+            <div class="col-1"><input type="number" name="cron_min_days" min="1" value="<?= (int)$config['cron_min_days'] ?>" class="form-control form-control-sm"></div>
+            <label class="col-auto col-form-label">hari, ulangi setiap</label>
+            <div class="col-1"><input type="number" name="cron_repeat_days" min="1" value="<?= (int)$config['cron_repeat_days'] ?>" class="form-control form-control-sm"></div>
+            <label class="col-auto col-form-label">hari, maksimal</label>
+            <div class="col-1"><input type="number" name="cron_max_per_run" min="1" value="<?= (int)$config['cron_max_per_run'] ?>" class="form-control form-control-sm"></div>
+            <label class="col-auto col-form-label">anggota per proses</label>
+          </div>
+          <div class="mt-2">
+            <label>Token Cron <small>(bagian dari URL cron; buat baru kalau URL ini pernah tersebar)</small></label>
+            <div class="input-group">
+              <input type="text" name="cron_token" id="waCronToken" value="<?= htmlspecialchars($config['cron_token'] ?? '') ?>" class="form-control" style="width:100%">
+              <div class="input-group-append">
+                <button type="button" class="btn btn-secondary" onclick="regenToken('waCronToken')">Buat Token Baru</button>
+              </div>
+            </div>
+          </div>
+          <div class="mt-2">
+            <label>URL Cron <small>(contoh jadwal setiap hari 07.00: <code>0 7 * * *</code>)</small></label>
+            <input type="text" readonly onclick="this.select()" class="form-control" style="width:100%;background:#f4f6f8" value="<?= htmlspecialchars($defaultCronUrl) ?>">
+            <input type="text" readonly onclick="this.select()" class="form-control mt-1" style="width:100%;background:#f4f6f8" value='curl -s "<?= htmlspecialchars($defaultCronUrl) ?>"'>
+            <?php if (!empty($config['cron_token'])): ?>
+            <a class="btn btn-default btn-sm mt-1" href="<?= htmlspecialchars($defaultCronUrl . '&dry=1') ?>" target="_blank">Tes tanpa mengirim</a>
+            <small>Melihat siapa saja yang akan dihubungi, tanpa mengirim apa pun.</small>
+            <?php endif; ?>
+          </div>
+        </td>
+      </tr>
+      <tr>
         <td class="alterCell"><strong>Teks Footer</strong></td>
         <td class="alterCell2"><textarea name="footer_text" rows="2" class="form-control" style="width:100%"><?= htmlspecialchars($config['footer_text']) ?></textarea></td>
       </tr>
@@ -263,9 +314,12 @@ function doAction(action) {
 function fillDefault() {
   document.querySelector('input[name="webhook_url"]').value = '<?= addslashes($defaultWebhookUrl) ?>';
 }
-function regenMcpToken() {
+function regenToken(inputId) {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
-  document.getElementById('waMcpToken').value = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  document.getElementById(inputId).value = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function regenMcpToken() {
+  regenToken('waMcpToken');
 }
 </script>

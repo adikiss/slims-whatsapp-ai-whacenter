@@ -6,6 +6,7 @@ Plugin notifikasi WhatsApp untuk SLiMS 9 (Bulian) dengan integrasi AI melalui Wh
 
 - **Notifikasi Transaksi** — Otomatis kirim pesan WhatsApp saat peminjaman, pengembalian, dan perpanjangan
 - **Notifikasi Keterlambatan** — Kirim pengingat keterlambatan dan estimasi denda ke anggota
+- **Notifikasi Terlambat Otomatis** — Pengingat keterlambatan terjadwal via cron (WhatsApp dan/atau email), tanpa mengirim ulang ke anggota yang baru dinotifikasi
 - **Notifikasi Anggota Baru** — Kirim pesan selamat datang saat anggota baru terdaftar
 - **Chatbot WhatsApp** — Anggota dapat mencari buku, cek pinjaman, dan denda via WhatsApp
 - **AI Assistant** — Integrasi AI (OpenRouter) untuk menjawab pertanyaan umum di luar perintah chatbot
@@ -43,6 +44,7 @@ Plugin notifikasi WhatsApp untuk SLiMS 9 (Bulian) dengan integrasi AI melalui Wh
 | Perpanjangan | Notifikasi saat pinjaman diperpanjang |
 | Keterlambatan | Pengingat keterlambatan |
 | Anggota Baru | Pesan selamat datang untuk anggota baru |
+| Notifikasi Terlambat Otomatis | Pengiriman terjadwal via cron: saluran (WhatsApp/email), mulai terlambat berapa hari, jeda pengiriman ulang, token & URL cron |
 | Chatbot | Aktifkan chatbot WhatsApp |
 | AI Assistant | Aktifkan AI untuk pertanyaan umum |
 | API Key | API key dari OpenRouter |
@@ -74,6 +76,32 @@ MIT License
 
 Dibuat untuk komunitas perpustakaan Indonesia.
 
+## Notifikasi Terlambat Otomatis (Cron)
+
+Pengingat keterlambatan bisa dikirim otomatis sesuai jadwal lewat WhatsApp dan/atau email. Pengingat manual tetap tersedia di menu **Circulation > Notifikasi Terlambat WA**.
+
+### Aktivasi
+
+1. Buka **System > WhatsApp Notification**, bagian **Notifikasi Terlambat Otomatis**
+2. Pilih saluran (WhatsApp, Email, atau keduanya). Email memakai pengaturan email SLiMS.
+3. Tentukan mulai terlambat berapa hari pesan dikirim, jeda pengiriman ulang, dan maksimal anggota per proses
+4. Centang **Aktifkan pengiriman terjadwal** lalu simpan; URL cron beserta tokennya akan muncul
+5. Klik **Tes tanpa mengirim** untuk melihat siapa saja yang akan dihubungi
+6. Tambahkan cron di hosting yang memanggil URL tersebut, misalnya setiap hari jam 07.00 (waktu server):
+
+```cron
+0 7 * * * curl -s "https://perpustakaan.example.com/index.php?p=wa_cron&token=<TOKEN_CRON>"
+```
+
+### Perilaku
+
+- Anggota yang paling lama terlambat dihubungi lebih dulu, maksimal 50 anggota atau 20 detik per proses; sisanya dilanjutkan di jadwal berikutnya
+- Sebuah saluran tidak dipakai lagi untuk anggota yang sama sebelum jeda pengiriman ulang terlewat (default 7 hari); pengingat yang dikirim manual ikut dihitung
+- Jika tabel `wa_notif_log` belum ada, proses berhenti tanpa mengirim apa pun
+- Hasil pengiriman tercatat di **WA Notification Log**; tambahkan `&dry=1` pada URL cron untuk mode tes
+
+Token cron terpisah dari token MCP. URL cron memuat token itu, jadi jangan disebarluaskan.
+
 ## Web Chat AI (OPAC)
 
 Plugin ini juga menyediakan widget **Web Chat AI** yang muncul di website OPAC (tombol hijau di pojok kanan bawah):
@@ -102,7 +130,7 @@ Endpoint chat: `index.php?p=wa_webchat` (POST JSON `{"message": "..."}`)
 
 ## MCP Server (untuk Claude Code / Codex / opencode)
 
-Plugin ini menyertakan **MCP Server** (Model Context Protocol, transport Streamable HTTP) sehingga agent AI bisa membaca data perpustakaan secara langsung: katalog, anggota, peminjaman, keterlambatan, dan denda. Semua tool **read-only** dan diamankan dengan token.
+Plugin ini menyertakan **MCP Server** (Model Context Protocol, transport Streamable HTTP) sehingga agent AI bisa membaca data perpustakaan secara langsung: katalog, anggota, peminjaman, keterlambatan, dan denda. Semua tool **read-only** (diberi penanda `readOnlyHint`) dan diamankan dengan token.
 
 ### Aktivasi
 1. Buka **System > WhatsApp Notification**

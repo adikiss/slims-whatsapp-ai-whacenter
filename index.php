@@ -52,6 +52,7 @@ if (isset($_POST['action'])) {
                 'webhook_url' => trim($_POST['webhook_url'] ?? ''),
                 'mcp_enable' => isset($_POST['mcp_enable']),
                 'mcp_token' => trim($_POST['mcp_token'] ?? ''),
+                'mcp_allow_send' => isset($_POST['mcp_allow_send']),
                 'cron_enable' => isset($_POST['cron_enable']),
                 'cron_token' => trim($_POST['cron_token'] ?? ''),
                 'cron_channel_wa' => isset($_POST['cron_channel_wa']),
@@ -220,9 +221,11 @@ $selfUrl = htmlspecialchars($_SERVER['PHP_SELF'] . '?' . http_build_query($_GET)
         <td class="alterCell2"><input type="text" name="library_name" value="<?= htmlspecialchars($config['library_name']) ?>" class="form-control" style="width:100%"></td>
       </tr>
       <tr>
-        <td class="alterCell"><strong>MCP Server</strong><br><small>Izinkan agent AI (Claude Code, Codex, opencode) membaca data perpustakaan: katalog, anggota, peminjaman, keterlambatan, denda. Semua aksi <em>read-only</em>, diamankan dengan token.</small></td>
+        <td class="alterCell"><strong>MCP Server</strong><br><small>Izinkan agent AI (Claude Code, Codex, opencode) membaca data perpustakaan: katalog, anggota, peminjaman, keterlambatan, denda. Tool baca data bersifat <em>read-only</em> dan diamankan dengan token; mengirim WhatsApp lewat MCP harus diaktifkan secara terpisah.</small></td>
         <td class="alterCell2">
           <label class="d-block"><input type="checkbox" name="mcp_enable" <?= $checked((bool)($config['mcp_enable'] ?? false)) ?>> Aktifkan MCP Server</label>
+          <label class="d-block mt-1"><input type="checkbox" name="mcp_allow_send" <?= $checked((bool)($config['mcp_allow_send'] ?? false)) ?>> Izinkan MCP mengirim WhatsApp (tool <code>send_whatsapp</code>)</label>
+          <small class="form-text text-muted" style="display:block">Kalau aktif, agent AI yang memegang token MCP bisa mengirim pesan WhatsApp atas nama perpustakaan. Klien seperti ChatGPT meminta konfirmasi setiap kali mengirim. Pesan tercatat di log dengan tipe MCP.</small>
           <div class="mt-2">
             <label>Token Autentikasi <small>(kirim sebagai header <code>Authorization: Bearer &lt;token&gt;</code>)</small></label>
             <div class="input-group">

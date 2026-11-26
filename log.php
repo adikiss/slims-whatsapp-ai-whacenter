@@ -60,6 +60,7 @@ function typeBadge(string $type): string {
         'overdue_email' => ['label' => 'Terlambat (Email)', 'class' => 'warning'],
         'new_member' => ['label' => 'Anggota Baru', 'class' => 'success'],
         'chatbot' => ['label' => 'Chatbot', 'class' => 'info'],
+        'mcp' => ['label' => 'MCP', 'class' => 'dark'],
         'test' => ['label' => 'Tes', 'class' => 'secondary'],
     ];
     $info = $map[$type] ?? ['label' => $type, 'class' => 'secondary'];
@@ -90,6 +91,7 @@ function statusBadge(string $status): string {
             <option value="overdue_email" <?= $typeFilter === 'overdue_email' ? 'selected' : '' ?>>Terlambat (Email)</option>
             <option value="new_member" <?= $typeFilter === 'new_member' ? 'selected' : '' ?>>Anggota Baru</option>
             <option value="chatbot" <?= $typeFilter === 'chatbot' ? 'selected' : '' ?>>Chatbot</option>
+            <option value="mcp" <?= $typeFilter === 'mcp' ? 'selected' : '' ?>>MCP</option>
             <option value="test" <?= $typeFilter === 'test' ? 'selected' : '' ?>>Tes</option>
           </select>
         </div>

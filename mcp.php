@@ -3,14 +3,16 @@
  * MCP Server (Model Context Protocol) — Streamable HTTP transport.
  * Memungkinkan agent AI (Claude Code, Codex, opencode, dll) membaca data
  * SLiMS: katalog, anggota, peminjaman, keterlambatan, denda, statistik.
+ * Tool send_whatsapp (mengirim pesan) hanya tersedia bila mcp_allow_send aktif.
  *
  * Endpoint : {base}/index.php?p=wa_mcp
- * Auth     : header "Authorization: Bearer <token>" (token ada di settings plugin)
+ * Auth     : token dari settings plugin, lewat header "Authorization: Bearer <token>",
+ *            header "X-MCP-Token: <token>", atau query "?token=<token>"
  * Protocol : JSON-RPC 2.0 — initialize, ping, tools/list, tools/call
  */
 defined('INDEX_AUTH') or die('Direct access not allowed!');
 
-foreach (['WaConfig', 'Message'] as $waClass) {
+foreach (['WaConfig', 'Whacenter', 'Message'] as $waClass) {
     if (!class_exists('WaNotif\\' . $waClass)) {
         require_once __DIR__ . '/' . $waClass . '.php';
     }
@@ -302,13 +304,92 @@ function wa_mcp_tool_get_stats(mysqli $dbs, array $args): array
     return wa_mcp_text($out);
 }
 
-function wa_mcp_tool_definitions(): array
+/**
+ * Kirim pesan WhatsApp lewat Whacenter. Satu-satunya tool yang melakukan aksi (bukan baca data),
+ * sehingga hanya tersedia bila mcp_allow_send aktif dan diberi penanda readOnlyHint = false
+ * agar klien seperti ChatGPT meminta konfirmasi dulu.
+ *
+ * Pengamanan: pesan identik ke nomor yang sama dalam 2 menit ditolak (mencegah pengiriman ganda),
+ * maksimal 20 pesan per 10 menit, dan pesan tidak dikirim bila riwayat (wa_notif_log) tak terbaca.
+ */
+function wa_mcp_tool_send_whatsapp(mysqli $dbs, array $args, array $config): array
+{
+    if (empty($config['mcp_allow_send'])) {
+        return wa_mcp_tool_error('Tool "send_whatsapp" belum diaktifkan. Aktifkan "Izinkan MCP mengirim WhatsApp" di pengaturan plugin.');
+    }
+    if (empty($config['enable'])) return wa_mcp_tool_error('Plugin WhatsApp Notification tidak aktif.');
+    if (empty($config['device_id'])) return wa_mcp_tool_error('Device ID Whacenter belum diatur.');
+    if (!function_exists('wa_notif_send')) return wa_mcp_tool_error('Fungsi pengiriman plugin tidak tersedia.');
+
+    // Nilai argumen yang bukan teks (mis. array) dianggap kosong
+    $arg = static function (string $key) use ($args): string {
+        $value = $args[$key] ?? '';
+        return is_scalar($value) ? trim((string)$value) : '';
+    };
+    $strlen = static function (string $text): int {
+        return function_exists('mb_strlen') ? mb_strlen($text) : strlen($text);
+    };
+
+    $maxLength = 4000;
+    $message = $arg('message');
+    if ($message === '') return wa_mcp_tool_error('Parameter "message" wajib diisi berupa teks.');
+    if ($strlen($message) > $maxLength) {
+        return wa_mcp_tool_error('Pesan terlalu panjang: ' . $strlen($message) . " karakter (maksimal $maxLength).");
+    }
+
+    $memberId = $arg('member_id');
+    $phone = $arg('phone');
+    if ($memberId !== '' && $phone !== '') return wa_mcp_tool_error('Isi salah satu saja: "member_id" atau "phone".');
+
+    $memberName = '';
+    if ($memberId !== '') {
+        $rows = wa_mcp_rows($dbs, 'SELECT member_id, member_name, member_phone FROM member WHERE member_id = ? LIMIT 1', 's', [$memberId]);
+        if (empty($rows)) return wa_mcp_tool_error("Anggota dengan ID \"$memberId\" tidak ditemukan.");
+        $memberName = (string)$rows[0]['member_name'];
+        $phone = trim((string)$rows[0]['member_phone']);
+        if ($phone === '') return wa_mcp_tool_error("Anggota \"$memberName\" ($memberId) tidak punya nomor WhatsApp di data anggota.");
+    } elseif ($phone === '') {
+        return wa_mcp_tool_error('Isi "member_id" atau "phone" sebagai tujuan pesan.');
+    }
+
+    $number = WaNotif\Whacenter::normalizeNumber($phone);
+    if (!preg_match('/^628[0-9]{7,11}$/', $number)) {
+        return wa_mcp_tool_error("Nomor \"$phone\" tidak tampak seperti nomor WhatsApp Indonesia.");
+    }
+
+    try {
+        $dup = wa_mcp_rows($dbs,
+            "SELECT COUNT(*) n FROM wa_notif_log
+              WHERE type = 'mcp' AND status = 'success' AND phone = ? AND message = ? AND created_at > ?",
+            'sss', [$number, $message, date('Y-m-d H:i:s', time() - 120)]);
+        if ((int)$dup[0]['n'] > 0) {
+            return wa_mcp_tool_error('Pesan yang sama baru saja dikirim ke nomor itu (dalam 2 menit terakhir), jadi tidak dikirim ulang.');
+        }
+        $rate = wa_mcp_rows($dbs,
+            "SELECT COUNT(*) n FROM wa_notif_log WHERE type = 'mcp' AND status = 'success' AND created_at > ?",
+            's', [date('Y-m-d H:i:s', time() - 600)]);
+        if ((int)$rate[0]['n'] >= 20) {
+            return wa_mcp_tool_error('Batas sementara tercapai: maksimal 20 pesan per 10 menit lewat MCP. Coba lagi nanti.');
+        }
+    } catch (\Throwable $e) {
+        return wa_mcp_tool_error('Riwayat pengiriman tidak dapat dibaca, pesan tidak dikirim. ' . $e->getMessage());
+    }
+
+    // wa_notif_send mencatat hasilnya sendiri di wa_notif_log (tipe "mcp")
+    $send = wa_notif_send($phone, $message, 'mcp', $memberId, $memberName);
+    if (empty($send['ok'])) return wa_mcp_tool_error('Gagal mengirim: ' . (string)($send['message'] ?? ''));
+
+    $target = $memberName !== '' ? "$memberName ($memberId)" : $number;
+    return wa_mcp_text("Pesan WhatsApp terkirim ke $target (nomor $number).");
+}
+
+function wa_mcp_tool_definitions(bool $allowSend = false): array
 {
     $str = fn(string $desc) => ['type' => 'string', 'description' => $desc];
     // Semua tool hanya membaca data (SELECT). Penanda ini membuat klien seperti ChatGPT
     // tidak memperlakukan setiap pemanggilan sebagai aksi tulis yang perlu dikonfirmasi.
     $readonly = ['readOnlyHint' => true];
-    return [
+    $tools = [
         ['name' => 'search_catalog', 'description' => 'Cari bibliografi/koleksi perpustakaan berdasarkan judul, penulis, atau sinopsis. Menampilkan ketersediaan eksemplar.', 'annotations' => $readonly, 'inputSchema' => ['type' => 'object', 'properties' => ['query' => $str('Kata kunci pencarian'), 'limit' => ['type' => 'integer', 'description' => 'Maksimal hasil (1-25)', 'default' => 10]], 'required' => ['query']]],
         ['name' => 'get_member', 'description' => 'Lihat data lengkap satu anggota: profil, status keanggotaan, pinjaman aktif, keterlambatan, dan total denda.', 'annotations' => $readonly, 'inputSchema' => ['type' => 'object', 'properties' => ['member_id' => $str('ID anggota, contoh: 1002')], 'required' => ['member_id']]],
         ['name' => 'get_loans', 'description' => 'Daftar pinjaman satu anggota beserta jatuh tempo dan status keterlambatan.', 'annotations' => $readonly, 'inputSchema' => ['type' => 'object', 'properties' => ['member_id' => $str('ID anggota'), 'status' => ['type' => 'string', 'enum' => ['active', 'overdue', 'returned', 'all'], 'default' => 'active']], 'required' => ['member_id']]],
@@ -316,9 +397,21 @@ function wa_mcp_tool_definitions(): array
         ['name' => 'get_fines', 'description' => 'Riwayat denda satu anggota beserta total yang belum dibayar.', 'annotations' => $readonly, 'inputSchema' => ['type' => 'object', 'properties' => ['member_id' => $str('ID anggota')], 'required' => ['member_id']]],
         ['name' => 'get_stats', 'description' => 'Statistik ringkas perpustakaan: anggota, koleksi, pinjaman aktif, keterlambatan, dan denda.', 'annotations' => $readonly, 'inputSchema' => ['type' => 'object']],
     ];
+    if ($allowSend) {
+        // Aksi kirim: readOnlyHint = false agar klien (mis. ChatGPT) meminta konfirmasi sebelum mengirim
+        $tools[] = ['name' => 'send_whatsapp',
+            'description' => 'Mengirim pesan WhatsApp atas nama perpustakaan. Gunakan hanya bila pengguna secara eksplisit meminta mengirim pesan, setelah penerima dan isi pesan disebutkan. Tujuan: isi "member_id" (anggota) atau "phone" (nomor langsung), salah satu saja. Isi pesan berupa teks biasa; penanda *tebal* WhatsApp didukung.',
+            'annotations' => ['readOnlyHint' => false, 'destructiveHint' => false, 'idempotentHint' => false],
+            'inputSchema' => ['type' => 'object', 'properties' => [
+                'member_id' => $str('ID anggota tujuan, contoh: 1002'),
+                'phone' => $str('Nomor WhatsApp tujuan, misalnya 081234567890; dipakai kalau penerima bukan anggota'),
+                'message' => ['type' => 'string', 'description' => 'Isi pesan yang dikirim'],
+            ], 'required' => ['message']]];
+    }
+    return $tools;
 }
 
-function wa_mcp_call_tool(mysqli $dbs, string $name, array $args): array
+function wa_mcp_call_tool(mysqli $dbs, string $name, array $args, array $config = []): array
 {
     try {
         switch ($name) {
@@ -328,6 +421,7 @@ function wa_mcp_call_tool(mysqli $dbs, string $name, array $args): array
             case 'get_overdue': return wa_mcp_tool_get_overdue($dbs, $args);
             case 'get_fines': return wa_mcp_tool_get_fines($dbs, $args);
             case 'get_stats': return wa_mcp_tool_get_stats($dbs, $args);
+            case 'send_whatsapp': return wa_mcp_tool_send_whatsapp($dbs, $args, $config);
         }
         return wa_mcp_tool_error("Tool \"$name\" tidak dikenal.");
     } catch (\Throwable $e) {
@@ -347,6 +441,7 @@ $batch = is_array($message) && isset($message[0]) && is_array($message[0]) && is
 $messages = $batch ? $message : [$message];
 $responses = [];
 $libName = $config['library_name'];
+$sendAllowed = !empty($config['mcp_allow_send']);
 
 foreach ($messages as $msg) {
     if (!is_array($msg) || ($msg['jsonrpc'] ?? '') !== '2.0' || !isset($msg['method'])) {
@@ -368,10 +463,12 @@ foreach ($messages as $msg) {
             $responses[] = ['jsonrpc' => '2.0', 'id' => $id, 'result' => [
                 'protocolVersion' => $protocol,
                 'capabilities' => ['tools' => ['listChanged' => false]],
-                'serverInfo' => ['name' => 'slims-whatsapp-ai-whacenter', 'title' => 'SLiMS Library Data', 'version' => '1.1.0'],
+                'serverInfo' => ['name' => 'slims-whatsapp-ai-whacenter', 'title' => 'SLiMS Library Data', 'version' => '1.2.0'],
                 'instructions' => "Server data perpustakaan $libName. Gunakan search_catalog untuk mencari koleksi, "
                     . 'get_member/get_loans/get_fines untuk data anggota (butuh member_id), get_overdue untuk semua keterlambatan, '
-                    . 'get_stats untuk ringkasan statistik.',
+                    . 'get_stats untuk ringkasan statistik.'
+                    . ($sendAllowed ? ' Tool send_whatsapp mengirim pesan WhatsApp: pakai hanya saat pengguna secara eksplisit meminta, '
+                        . 'dan pastikan penerima serta isi pesannya sudah disebutkan pengguna.' : ''),
             ]];
             break;
 
@@ -380,7 +477,7 @@ foreach ($messages as $msg) {
             break;
 
         case 'tools/list':
-            $responses[] = ['jsonrpc' => '2.0', 'id' => $id, 'result' => ['tools' => wa_mcp_tool_definitions()]];
+            $responses[] = ['jsonrpc' => '2.0', 'id' => $id, 'result' => ['tools' => wa_mcp_tool_definitions($sendAllowed)]];
             break;
 
         case 'tools/call':
@@ -392,7 +489,7 @@ foreach ($messages as $msg) {
                 $responses[] = ['jsonrpc' => '2.0', 'id' => $id, 'result' => wa_mcp_tool_error('DB connection failed: ' . $e->getMessage())];
                 break;
             }
-            $responses[] = ['jsonrpc' => '2.0', 'id' => $id, 'result' => wa_mcp_call_tool($dbs, $toolName, $toolArgs)];
+            $responses[] = ['jsonrpc' => '2.0', 'id' => $id, 'result' => wa_mcp_call_tool($dbs, $toolName, $toolArgs, $config)];
             break;
 
         default:

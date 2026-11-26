@@ -11,7 +11,7 @@ Plugin notifikasi WhatsApp untuk SLiMS 9 (Bulian) dengan integrasi AI melalui Wh
 - **Chatbot WhatsApp** — Anggota dapat mencari buku, cek pinjaman, dan denda via WhatsApp
 - **AI Assistant** — Integrasi AI (OpenRouter) untuk menjawab pertanyaan umum di luar perintah chatbot
 - **Web Chat AI** — Widget chat AI di OPAC (auto-inject, tanpa edit template)
-- **MCP Server** — Agent AI (Claude Code, Codex, opencode) bisa membaca data perpustakaan
+- **MCP Server** — Agent AI (Claude Code, Codex, opencode) bisa membaca data perpustakaan; bisa juga mengirim WhatsApp bila diaktifkan
 - **Log Lengkap** — Log semua pesan terkirim dengan filter dan pencarian
 - **Dashboard Widget** — Statistik notifikasi di beranda admin SLiMS
 
@@ -49,6 +49,7 @@ Plugin notifikasi WhatsApp untuk SLiMS 9 (Bulian) dengan integrasi AI melalui Wh
 | AI Assistant | Aktifkan AI untuk pertanyaan umum |
 | API Key | API key dari OpenRouter |
 | Model | Model AI yang digunakan (default: google/gemini-2.0-flash-001) |
+| Izinkan MCP mengirim WhatsApp | Menampilkan tool `send_whatsapp` sehingga agent AI bisa mengirim pesan (standar: mati) |
 
 ## Perintah Chatbot
 
@@ -130,7 +131,7 @@ Endpoint chat: `index.php?p=wa_webchat` (POST JSON `{"message": "..."}`)
 
 ## MCP Server (untuk Claude Code / Codex / opencode)
 
-Plugin ini menyertakan **MCP Server** (Model Context Protocol, transport Streamable HTTP) sehingga agent AI bisa membaca data perpustakaan secara langsung: katalog, anggota, peminjaman, keterlambatan, dan denda. Semua tool **read-only** (diberi penanda `readOnlyHint`) dan diamankan dengan token.
+Plugin ini menyertakan **MCP Server** (Model Context Protocol, transport Streamable HTTP) sehingga agent AI bisa membaca data perpustakaan secara langsung: katalog, anggota, peminjaman, keterlambatan, dan denda. Tool baca data bersifat **read-only** (diberi penanda `readOnlyHint`) dan diamankan dengan token. Tool `send_whatsapp` untuk mengirim pesan hanya muncul bila diaktifkan di pengaturan.
 
 ### Aktivasi
 1. Buka **System > WhatsApp Notification**
@@ -147,6 +148,31 @@ Plugin ini menyertakan **MCP Server** (Model Context Protocol, transport Streama
 | `get_overdue` | Semua keterlambatan + kontak WA anggota |
 | `get_fines` | Riwayat & total denda belum bayar |
 | `get_stats` | Statistik ringkas perpustakaan |
+| `send_whatsapp` | Mengirim pesan WhatsApp ke anggota (`member_id`) atau nomor langsung (`phone`); hanya bila diaktifkan |
+
+### Mengirim WhatsApp lewat MCP (opsional)
+
+Tool `send_whatsapp` **tidak aktif** secara default. Untuk mengaktifkannya:
+
+1. Buka **System > WhatsApp Notification**
+2. Centang **Izinkan MCP mengirim WhatsApp (tool `send_whatsapp`)** lalu simpan
+
+Agent AI yang memegang token MCP kemudian bisa mengirim pesan atas nama perpustakaan. Klien seperti ChatGPT meminta konfirmasi sebelum mengirim karena tool ini ditandai sebagai aksi tulis.
+
+| Parameter | Deskripsi |
+|-----------|-----------|
+| `message` | Isi pesan (wajib, maksimal 4000 karakter) |
+| `member_id` | ID anggota tujuan; nomor diambil dari data anggota |
+| `phone` | Nomor WhatsApp tujuan, dipakai kalau penerima bukan anggota |
+
+Isi `member_id` **atau** `phone`, salah satu saja. Pengamanan bawaan:
+
+- Pesan yang sama ke nomor yang sama dalam 2 menit tidak dikirim ulang
+- Maksimal 20 pesan per 10 menit lewat MCP
+- Pesan tidak dikirim bila riwayat pengiriman (`wa_notif_log`) tidak dapat dibaca
+- Setiap pengiriman tercatat di **WA Notification Log** dengan tipe **MCP**
+
+Karena token MCP bisa dipakai untuk mengirim pesan, jangan sebarkan token tersebut.
 
 ### Koneksi Claude Code
 

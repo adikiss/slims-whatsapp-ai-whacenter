@@ -30,6 +30,8 @@ class WaConfig
             'webhook_url' => '',
             'mcp_enable' => false,
             'mcp_token' => '',
+            // Tool MCP send_whatsapp (mengirim pesan) — harus diaktifkan secara terpisah
+            'mcp_allow_send' => false,
             // Notifikasi terjadwal (cron.php)
             'cron_enable' => false,
             'cron_token' => '',
